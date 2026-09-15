@@ -287,6 +287,10 @@ def classes(bundle: dict, query: str = '') -> list[dict]:
     exact = [entry for entry in available if _normalize(label(bundle, entry['label'])).rstrip('s') == q.rstrip('s')]
     if exact:
         return exact
+    base_classes = {str(item['class']) for item in entries(bundle, 'items')
+                    if _normalize(label(bundle, item['label'])) == q}
+    if base_classes:
+        return [entry for entry in available if str(entry['id']) in base_classes]
     return [entry for entry in available if all(part in _normalize(label(bundle, entry['label'])) for part in q.split())]
 
 
@@ -360,6 +364,8 @@ def search_craft_mods(query: str, item_class: str = '') -> str:
 
 def get_craft_tiers(base_type: str, query: str) -> str:
     bundle = load_bundle()
+    if not base_type.strip() or not classes(bundle, base_type):
+        raise ValueError(f'Unknown PoE2 item base or class: {base_type!r}; use get_craft_base_items')
     wanted = {(cls['id'], group['id'])
               for cls, mod, group, weight, text in _mod_rows(bundle, query, base_type)}
     grouped: dict[tuple, list] = {}

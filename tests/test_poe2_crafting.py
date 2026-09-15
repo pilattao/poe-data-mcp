@@ -211,3 +211,12 @@ def test_invalid_source_graph_never_replaces_valid_snapshot(cached, bundle, monk
     before = cached.read_bytes()
     assert 'error' in tools.update_craftofexile_cache(force=True).lower()
     assert cached.read_bytes() == before
+
+def test_tiers_resolve_exact_base_names_to_their_native_class(cached):
+    result=tools.get_craft_tiers('Test Crossbow','attack speed')
+    assert 'AttackSpeed1' in result and 'AttackSpeed2' in result
+    assert 'No matching' not in result
+
+def test_unknown_base_is_not_reported_as_an_empty_mod_pool(cached):
+    with pytest.raises(ValueError,match='Unknown'):
+        tools.get_craft_tiers('Missing Base','life')
