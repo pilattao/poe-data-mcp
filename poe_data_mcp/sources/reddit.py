@@ -5,7 +5,7 @@ import urllib.request
 import urllib.parse
 
 _HEADERS = {
-    "User-Agent": "poe-build-research/1.0 (contact: zerosquaredio@gmail.com)",
+    "User-Agent": "poe-data-mcp/0.3 (+https://github.com/pilattao/poe_mcp_suite)",
     "Accept": "application/json",
 }
 
@@ -13,26 +13,24 @@ _LINK_PATTERNS = {
     "pobb.in": re.compile(r"https?://pobb\.in/\S+"),
     "poedb.tw": re.compile(r"https?://poedb\.tw/\S+PathOfBuilding\?id=\S+"),
     "pastebin": re.compile(r"https?://pastebin\.com/\S+"),
-    "mobalytics": re.compile(r"https?://mobalytics\.gg/poe/\S+"),
-    "maxroll": re.compile(r"https?://maxroll\.gg/poe/\S+"),
+    "mobalytics": re.compile(r"https?://mobalytics\.gg/(?:poe|poe-2)/\S+"),
+    "maxroll": re.compile(r"https?://maxroll\.gg/(?:poe|poe2)/\S+"),
     "youtube": re.compile(r"https?://(?:www\.)?youtube\.com/watch\?v=[\w-]+|https?://youtu\.be/[\w-]+"),
 }
 
 
 def _to_json_url(url: str) -> str:
     """Convert a Reddit post URL to its JSON API equivalent."""
-    url = url.strip().rstrip("/")
-    # Handle shortlinks: reddit.com/r/.../comments/ID/...
-    # Remove any existing .json suffix
-    if url.endswith(".json"):
-        return url
-    # Handle old.reddit.com, www.reddit.com, reddit.com
-    url = re.sub(r"https?://(?:www\.|old\.)?reddit\.com", "https://www.reddit.com", url)
-    # Append .json before any query string
-    if "?" in url:
-        base, query = url.split("?", 1)
-        return base.rstrip("/") + ".json?" + query
-    return url.rstrip("/") + ".json"
+    parsed = urllib.parse.urlsplit(url.strip())
+    if (parsed.scheme not in {'http', 'https'} or parsed.username or parsed.password
+            or parsed.hostname not in {'reddit.com', 'www.reddit.com', 'old.reddit.com', 'm.reddit.com'}):
+        raise ValueError('Use a public Reddit post URL without credentials.')
+    path = parsed.path.rstrip('/')
+    if not re.search(r'/comments/[A-Za-z0-9]+(?:[/.]|$)', path):
+        raise ValueError('Use a Reddit post URL containing /comments/<id>.')
+    if not path.endswith('.json'):
+        path += '.json'
+    return urllib.parse.urlunsplit(('https', 'www.reddit.com', path, parsed.query, ''))
 
 
 def _extract_links(text: str) -> dict[str, list[str]]:
@@ -70,7 +68,11 @@ def fetch_reddit_post(url: str, num_comments: int = 10) -> str:
         url: Reddit post URL (any form: www, old, or mobile reddit).
         num_comments: Number of top-scored comments to include (default 10).
     """
-    json_url = _to_json_url(url) + ("" if "?" in url else "?limit=50")
+    if not 0 <= num_comments <= 50:
+        raise ValueError('num_comments must be between 0 and 50.')
+    json_url = _to_json_url(url)
+    if not urllib.parse.urlsplit(json_url).query:
+        json_url += '?limit=50'
 
     try:
         req = urllib.request.Request(json_url, headers=_HEADERS)
@@ -79,8 +81,8 @@ def fetch_reddit_post(url: str, num_comments: int = 10) -> str:
     except urllib.error.HTTPError as e:
         if e.code == 403:
             return (
-                f"Reddit returned 403 Forbidden. This usually means rate limiting — "
-                f"wait a few seconds and try again. URL attempted: {json_url}"
+                f"Reddit denied this public request (403 Forbidden). "
+                f"Post availability could not be verified. URL attempted: {json_url}"
             )
         if e.code == 404:
             return f"Reddit post not found (404). Check the URL: {url}"

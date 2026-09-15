@@ -89,7 +89,7 @@ def _extract_section_text(heading, content_div) -> list[str]:
 
 
 def fetch_wiki_page(wiki_url: str) -> str:
-    """Fetch useful content from a poewiki.net page, stripping navigation and noise.
+    """Fetch article content from the configured game's community wiki.
 
     Use this to get detailed mechanics, acquisition info, and recipes from the
     Community Wiki link returned by get_item_detail or get_gem_detail.
@@ -188,12 +188,11 @@ def fetch_wiki_page(wiki_url: str) -> str:
 
 
 def wiki_cargo_query(tables: str, fields: str, where: str = "", limit: int = 50, offset: int = 0) -> str:
-    """Query poewiki Cargo tables directly — database-style access to item/mod data
+    """Query the configured game's wiki Cargo tables for item/mod data
     instead of fetching wiki pages one at a time.
 
-    Answers "list ALL X with their properties" in one call: every currency item with
-    descriptions, uniques by base, mods by domain. Found 2026-08-05 enumerating the
-    3.29 Astrolabe varieties, which exist in no offline data source.
+    Returns a bounded page of rows. Uses poe2wiki.net with POE_GAME=poe2;
+    poewiki.net requires explicit POE_GAME=poe1. Each wiki has its own schema.
 
     Args:
         tables: Cargo table(s). Most useful: "items" (name, class, description,
@@ -201,7 +200,7 @@ def wiki_cargo_query(tables: str, fields: str, where: str = "", limit: int = 50,
             generation_type, stat_text), "skill_gems". See Special:CargoTables.
         fields: Table-qualified, comma-separated: "items.name,items.class".
         where: SQL-ish filter, e.g. items.class="Currency Item" or
-            items.name LIKE "%Astrolabe%". Strongly recommended.
+            items.name="Divine Orb". Strongly recommended.
         limit: 1-500 rows (default 50).  offset: pagination for larger sets.
 
     Returns a count line then one " | "-joined row per line.

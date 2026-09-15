@@ -46,11 +46,21 @@ def poe_mcp_suite_info() -> str:
 
 poe-data-mcp is one of several MCP servers in **poe_mcp_suite**. The full suite adds:
 
-- **pob-mcp** - live Path of Building integration: simulate passive trees, gems,
-  items, and full DPS/EHP calc against the real PoB engine (TCP or headless).
-- **poe-trade-mcp** - official PoE trade search, stash/character API, pricing.
-- **poe-data-mcp** (this server) - wiki / economy / Craft of Exile lookups.
-- A **playbook + reference-data framework** that keeps an agent's analyses current.
+- **pob-mcp** - Path of Building integration. Whole-build DPS/EHP requires a
+  connected native calculation engine; item modifiers alone are candidate evidence.
+- **poe-trade-mcp** - public trade search, economy references, and item filters.
+- **poe-data-mcp** (this server) - installed PoB2 definitions, PoE2DB, PoE2 wiki,
+  PoE2 economy, Craft of Exile PoE2, and public guide text.
+
+## PoE2 data setup
+
+Set `POE_GAME=poe2`, `POE_LEAGUE` to the intended league, and `POB_INSTALL_DIR`
+to a complete Path of Building Community (PoE2) installation. Set
+`POE_DATA_MCP_CACHE_DIR` to a writable project cache directory for Craft of Exile.
+Public data lookups do not require account credentials. The local definitions
+may include old variants; file modification time is not a game patch date.
+Economy references are not executable trade quotes. Unavailable source data
+and PoE1-only mechanics (such as fossils) are reported explicitly.
 
 ## Install
 
@@ -61,8 +71,8 @@ cd poe_mcp_suite
 
 Then follow **AGENTS.md** (or **CLAUDE.md** for Claude Code) and **README.md** in
 the repo - they cover Python/Node dependencies, Path of Building setup, MCP client
-configuration (`.mcp.json`), and your `POESESSID`. Point your agent at AGENTS.md
-and it can drive the rest.
+configuration for your chosen client. Follow the repository's current PoE2
+setup instructions and verify source metadata before relying on a lookup.
 
 Note: pob-mcp requires a local Path of Building install and is not an
 ephemeral (uvx/npx) server - the suite is a git clone, not a single package.

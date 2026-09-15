@@ -51,10 +51,13 @@ def get_gem_detail(gem_name: str) -> str:
         title=popup.select_one('.itemName')
         if not title or title.get_text(' ',strip=True).casefold()!=gem_name.strip().casefold(): continue
         text=popup.get_text(' ',strip=True)
-        if text in seen: continue
-        seen.add(text)
         pane=popup.find_parent(class_='tab-pane')
         identity=pane.get('id','') if pane else ''
+        # Each pane includes both a readable tooltip and a debug expansion.
+        # Distinct skill panes can have the same name (e.g. triggered Spark).
+        key=identity or text
+        if key in seen: continue
+        seen.add(key)
         matches.append(f'## {gem_name} ({identity or "skill definition"})\n{text}')
         if pane:
             for header in pane.select('.card-header'):
@@ -62,11 +65,18 @@ def get_gem_detail(gem_name: str) -> str:
                 card=header.find_parent(class_='card')
                 if card:
                     for table in card.find_all('table'):
+                        headers=[x.get_text(' ',strip=True) for x in table.select('th')]
+                        if headers==['Implicit']:
+                            effects=[x.get_text(' ',strip=True) for x in table.select('td')]
+                            if effects: matches.append('Implicit effects:\n'+'\n'.join(effects))
+                            continue
+                        if not headers or headers[0]!='Level': continue
                         rows=[]
                         for tr in table.find_all('tr'):
                             cells=[x.get_text(' ',strip=True) for x in tr.find_all(['td','th'])]
                             if cells and (tr.find('th') or cells[0] in {'1','10','20','30','40'}): rows.append(' | '.join(cells))
-                        matches.append('Level scaling (selected rows):\n'+'\n'.join(rows))
+                        matches.append('Level scaling (selected source rows; the table may combine multiple modes, '
+                                       'so its columns are not a single combined skill effect):\n'+'\n'.join(rows))
                 break
     if not matches: raise ValueError(f'No matching PoE2 gem tooltip found at {url}; page content must be checked')
     return '\n\n'.join(matches)+f'\n\nSource: {url}\nFetched: {datetime.now(timezone.utc).isoformat()}\nEach definition is shown separately; these are not character-calculated values.'
@@ -110,7 +120,7 @@ def get_item_detail(item_name: str) -> str:
 
 
 def load_tree(version=''):
-    data=get_data().tree(version); nodes={}
+    native=get_data(); data=native.tree(version); nodes={}
     for nid,node in data['nodes'].items():
         n=dict(node); n['stats']=values(n.get('stats')); n['masteryEffects']=values(n.get('masteryEffects'))
         n['_id']=str(nid); n['out']=[]; n['in']=[]
@@ -121,4 +131,5 @@ def load_tree(version=''):
             target=str(connection.get('id') if isinstance(connection,dict) else connection)
             if target in nodes:
                 n['out'].append(target);nodes[target]['in'].append(nid)
-    return {'all_nodes':list(nodes.values()),'by_id':nodes,'version':data['version']}
+    return {'all_nodes':list(nodes.values()),'by_id':nodes,'version':data['version'],
+            'source':_source(native.metadata(f"TreeData/{data['version']}/tree.lua"))}

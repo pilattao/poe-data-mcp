@@ -86,13 +86,17 @@ def _fuzzy_score(query: str, node: dict) -> int:
 def search_passive(query: str, type: str = "") -> str:
     """Search for Path of Exile passive skill tree nodes by name or stat keyword.
 
-    Searches across keystones, notables, masteries, and ascendancy passives.
+    Searches the configured game's keystones, notables, and ascendancy passives.
+    Masteries are available only with explicit POE_GAME=poe1.
     Small passives and jewel sockets are excluded unless directly matched by name.
 
     Args:
         query: Search keyword to match against node names and stats.
-        type: Optional filter: "keystone", "notable", "mastery", or "ascendancy". If empty, searches all.
+        type: Optional node type: "keystone", "notable", "ascendancy", "small",
+            "jewel_socket", or PoE1-only "mastery". Empty searches all.
     """
+    if not query.strip():
+        raise ValueError('A nonempty passive query is required.')
     tree = _load_tree()
     type_filter = type.strip().lower()
 
@@ -148,6 +152,9 @@ def search_passive(query: str, type: str = "") -> str:
     if len(scored) > 20:
         lines.append(f"... and {len(scored) - 20} more results.")
 
+    if tree.get('source'):
+        lines.append(tree['source'])
+
     return "\n".join(lines)
 
 
@@ -157,7 +164,7 @@ def get_passive_detail(name: str) -> str:
     Returns full stats, connections, ascendancy info, mastery effects, and flavor text.
 
     Args:
-        name: The passive node name, e.g. "Iron Reflexes" or "Divine Shield".
+        name: The passive node name, e.g. "Chaos Inoculation".
     """
     tree = _load_tree()
     q = name.strip().lower()
@@ -205,6 +212,8 @@ def get_passive_detail(name: str) -> str:
 
     # Reminder text
     reminders = found.get("reminderText", [])
+    if isinstance(reminders, str):
+        reminders = [reminders]
     if reminders:
         for r in reminders:
             sections.append(f"*{r}*")
@@ -212,6 +221,8 @@ def get_passive_detail(name: str) -> str:
 
     # Flavor text
     flavors = found.get("flavourText", [])
+    if isinstance(flavors, str):
+        flavors = [flavors]
     if flavors:
         sections.append(f"*\"{' '.join(flavors)}\"*")
         sections.append("")
@@ -235,4 +246,6 @@ def get_passive_detail(name: str) -> str:
                 sections.append(f"- {cn}")
             sections.append("")
 
+    if tree.get('source'):
+        sections.append(tree['source'])
     return "\n".join(sections)

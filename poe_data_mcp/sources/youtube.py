@@ -5,6 +5,19 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from urllib.parse import urlsplit
+
+
+_PUBLIC_OPTIONS = ['--ignore-config', '--no-cache-dir', '--no-playlist', '--skip-download']
+
+
+def _video_url(url: str) -> str:
+    url = url.strip()
+    parsed = urlsplit(url)
+    if (parsed.scheme not in {'http', 'https'} or parsed.username or parsed.password
+            or parsed.hostname not in {'youtube.com', 'www.youtube.com', 'm.youtube.com', 'youtu.be'}):
+        raise ValueError('Use a public YouTube video URL without credentials.')
+    return url
 
 
 def _ytdlp_cmd() -> list[str] | None:
@@ -17,11 +30,11 @@ def _ytdlp_cmd() -> list[str] | None:
     try:
         import yt_dlp  # noqa: F401
 
-        return [sys.executable, "-m", "yt_dlp"]
+        return [sys.executable, "-m", "yt_dlp", *_PUBLIC_OPTIONS]
     except Exception:
         pass
     if shutil.which("yt-dlp") is not None:
-        return ["yt-dlp"]
+        return ["yt-dlp", *_PUBLIC_OPTIONS]
     return None
 
 
@@ -29,13 +42,6 @@ _YTDLP_MISSING = (
     "yt-dlp is not installed. Install it with: pip install yt-dlp\n"
     "Alternatively, paste the video description/transcript text directly."
 )
-
-# Player-client selection. yt-dlp hanging on YouTube is almost always the default
-# *web* client stalling on YouTube's PO-token / nsig JS challenge. Keep yt-dlp's own
-# `default` rotation first, then guarantee the lightweight android_vr / tv clients
-# (which skip that challenge) are available as fallbacks. Unknown clients are skipped
-# non-fatally by yt-dlp, so this stays safe across version bumps.
-_YT_EXTRACTOR_ARGS = ["--extractor-args", "youtube:player_client=default,android_vr,tv"]
 
 # Windows: never let a child attach to this server's console.
 #
@@ -87,8 +93,7 @@ def _timeout_message(kind: str, url: str, exc: subprocess.TimeoutExpired) -> str
     detail = f"\nLast yt-dlp output before the stall:\n{partial}" if partial else ""
     return (
         f"Timed out fetching YouTube {kind} for: {url}\n"
-        "yt-dlp stalled (usually a transient YouTube-side stall, not a missing "
-        "transcript). Try again in a moment." + detail
+        "The request did not complete; transcript availability is unknown." + detail
     )
 
 # Links worth extracting from a build guide description
@@ -96,8 +101,8 @@ _LINK_PATTERNS = {
     "pobb.in": re.compile(r"https?://pobb\.in/\S+"),
     "poedb.tw": re.compile(r"https?://poedb\.tw/\S+PathOfBuilding\?id=\S+"),
     "pastebin": re.compile(r"https?://pastebin\.com/\S+"),
-    "mobalytics": re.compile(r"https?://mobalytics\.gg/poe/\S+"),
-    "maxroll": re.compile(r"https?://maxroll\.gg/poe/\S+"),
+    "mobalytics": re.compile(r"https?://mobalytics\.gg/(?:poe|poe-2)/\S+"),
+    "maxroll": re.compile(r"https?://maxroll\.gg/(?:poe|poe2)/\S+"),
     "poe_forum": re.compile(r"https?://www\.pathofexile\.com/forum/view-thread/\d+"),
 }
 
@@ -112,6 +117,7 @@ def fetch_youtube_description(url: str) -> str:
     Args:
         url: YouTube video URL (e.g. https://www.youtube.com/watch?v=...)
     """
+    url = _video_url(url)
     ytdlp = _ytdlp_cmd()
     if ytdlp is None:
         return _YTDLP_MISSING
@@ -119,11 +125,11 @@ def fetch_youtube_description(url: str) -> str:
     try:
         title_result = _run(
             [*ytdlp, "--get-title", "--force-ipv4", "--socket-timeout", "20",
-             "--no-warnings", *_YT_EXTRACTOR_ARGS, url], timeout=30
+             "--no-warnings", "--", url], timeout=30
         )
         desc_result = _run(
             [*ytdlp, "--get-description", "--force-ipv4", "--socket-timeout", "20",
-             "--no-warnings", *_YT_EXTRACTOR_ARGS, url], timeout=30
+             "--no-warnings", "--", url], timeout=30
         )
     except subprocess.TimeoutExpired as e:
         return _timeout_message("description", url, e)
@@ -177,6 +183,7 @@ def fetch_youtube_transcript(url: str, include_timestamps: bool = False) -> str:
         include_timestamps: If True, include time markers (MM:SS) inline.
                             Default False returns clean readable prose.
     """
+    url = _video_url(url)
     ytdlp = _ytdlp_cmd()
     if ytdlp is None:
         return _YTDLP_MISSING
@@ -185,11 +192,11 @@ def fetch_youtube_transcript(url: str, include_timestamps: bool = False) -> str:
     try:
         title_result = _run(
             [*ytdlp, "--get-title", "--force-ipv4", "--socket-timeout", "20",
-             "--no-warnings", *_YT_EXTRACTOR_ARGS, url], timeout=15
+             "--no-warnings", "--", url], timeout=15
         )
         desc_result = _run(
             [*ytdlp, "--get-description", "--force-ipv4", "--socket-timeout", "20",
-             "--no-warnings", *_YT_EXTRACTOR_ARGS, url], timeout=15
+             "--no-warnings", "--", url], timeout=15
         )
         title = title_result.stdout.strip()
         description = desc_result.stdout.strip()
@@ -212,7 +219,7 @@ def fetch_youtube_transcript(url: str, include_timestamps: bool = False) -> str:
                 [*ytdlp, "--write-auto-subs", "--sub-lang", "en",
                  "--sub-format", "json3", "--skip-download", "--no-warnings",
                  "--force-ipv4", "--socket-timeout", "20", "--retries", "3",
-                 *_YT_EXTRACTOR_ARGS, "-o", out_path, url], timeout=120
+                 "-o", out_path, "--", url], timeout=120
             )
         except subprocess.TimeoutExpired as e:
             return _timeout_message("transcript", url, e)
