@@ -1,3 +1,4 @@
+from urllib.parse import urlparse
 import base64
 import json
 import zlib
@@ -11,6 +12,9 @@ from poe_data_mcp.sources.common import HEADERS
 _KEY_STATS = {
     "Life": "Life",
     "Mana": "Mana",
+    "Spirit": "Spirit",
+    "SpiritUnreserved": "Unreserved Spirit",
+    "ManaUnreserved": "Unreserved Mana",
     "EnergyShield": "Energy Shield",
     "Armour": "Armour",
     "Evasion": "Evasion",
@@ -49,7 +53,7 @@ _CHARGE_STATS = {
 _SLOT_ORDER = [
     "Helmet", "Amulet", "Weapon 1", "Weapon 2", "Body Armour",
     "Gloves", "Belt", "Boots", "Ring 1", "Ring 2",
-    "Flask 1", "Flask 2", "Flask 3", "Flask 4", "Flask 5",
+    "Flask 1", "Flask 2", "Charm 1", "Charm 2", "Charm 3", "Flask 3", "Flask 4", "Flask 5",
     "Graft 1", "Graft 2",
     "Weapon 1 Swap", "Weapon 2 Swap",
 ]
@@ -80,13 +84,13 @@ def _fetch_raw(url: str) -> str:
         # https://pobb.in/{id}            → https://pobb.in/{id}/raw
         # https://pobb.in/u/{user}/{id}   → https://pobb.in/u/{user}/{id}/raw
         raw_url = url + "/raw"
-    elif "poedb.tw" in url:
+    elif urlparse(url).hostname in {"poedb.tw", "poe2db.tw"}:
         # https://poedb.tw/{locale}/PathOfBuilding?id={id} → https://poedb.tw/pob/{id}/raw
         import re as _urlre
         m = _urlre.search(r"[?&]id=([^&]+)", url)
         if not m:
             raise ValueError(f"Could not extract build ID from poedb.tw URL: {url}")
-        raw_url = f"https://poedb.tw/pob/{m.group(1)}/raw"
+        raw_url = f"https://{urlparse(url).hostname}/pob/{m.group(1)}/raw"
     elif "pastebin.com" in url:
         # https://pastebin.com/{id} → https://pastebin.com/raw/{id}
         paste_id = url.rstrip("/").split("/")[-1]
@@ -107,7 +111,12 @@ def _decode_pob(code: str) -> ET.Element:
     try:
         data = base64.urlsafe_b64decode(code)
         xml_bytes = zlib.decompress(data)
-        return ET.fromstring(xml_bytes)
+        root = ET.fromstring(xml_bytes)
+        from poe_data_mcp.sources.common import GAME
+        expected = "PathOfBuilding2" if GAME == "poe2" else "PathOfBuilding"
+        if root.tag != expected:
+            raise ValueError(f"Expected {expected} XML for {GAME}, got {root.tag}")
+        return root
     except Exception as e:
         raise ValueError(f"Could not decode PoB code: {e}")
 
@@ -131,6 +140,8 @@ def _parse_build_info(root: ET.Element) -> dict:
         "pantheon_minor": build.get("pantheonMinorGod", ""),
     }
 
+    if root.tag == "PathOfBuilding2":
+        info.update(bandit="", pantheon_major="", pantheon_minor="")
     all_tracked = {**_KEY_STATS, **_RESIST_STATS, **_DEFENSE_STATS, **_CHARGE_STATS}
     stats = {}
     for stat in build.findall("PlayerStat"):
@@ -271,9 +282,13 @@ def _parse_items(root: ET.Element) -> list[dict]:
             item_map[iid] = _parse_item_text(text)
 
     # Collect Slot elements — they live inside <ItemSet>, not directly under <Items>
-    slot_sources: list[ET.Element] = list(items_el.findall("Slot"))
-    for item_set in items_el.findall("ItemSet"):
-        slot_sources.extend(item_set.findall("Slot"))
+    item_sets = items_el.findall("ItemSet")
+    if item_sets:
+        active_id = items_el.get("activeItemSet", "1")
+        active_set = next((it for it in item_sets if it.get("id") == active_id), item_sets[0])
+        slot_sources = list(active_set.findall("Slot"))
+    else:
+        slot_sources = list(items_el.findall("Slot"))
 
     # Map slot name → item (skip abyssal sockets and empty slots)
     slot_items: dict[str, dict] = {}
@@ -413,7 +428,7 @@ def _parse_passives(root: ET.Element) -> dict:
 
     try:
         from poe_data_mcp.sources.player.passives import _load_tree
-        by_id = _load_tree()["by_id"]
+        by_id = _load_tree(spec.get("treeVersion", ""))["by_id"]
         keystones, notables = [], []
         for nid in allocated_ids:
             node = by_id.get(nid)
@@ -427,8 +442,9 @@ def _parse_passives(root: ET.Element) -> dict:
                 keystones.append(name)
             elif ntype == "notable":
                 notables.append(name)
-    except Exception:
-        keystones, notables = [], []
+    except Exception as exc:
+        # A missing source is not evidence of an empty tree.
+        raise ValueError(f"Unable to resolve allocated passives: {exc}") from exc
 
     return {
         "keystones": sorted(keystones),
@@ -700,7 +716,9 @@ def _itemset_slot_sockets(root: ET.Element, stage_idx: int | None) -> dict:
         target = next((s for s in item_sets if stage_idx in _extract_stage_indices(s.get("title", ""))), None)
     if target is None:
         active = items_el.get("activeItemSet")
-        target = next((s for s in item_sets if s.get("id") == active), None) or (item_sets[0] if item_sets else None)
+        target = next((s for s in item_sets if s.get("id") == active), None)
+        if target is None:
+            target = item_sets[0] if item_sets else None
 
     slot_sockets = {}
     if target is not None:
@@ -714,30 +732,11 @@ def _itemset_slot_sockets(root: ET.Element, stage_idx: int | None) -> dict:
 
 
 def parse_pob_skill_groups(code_or_url: str, skill_set: str = "") -> str:
-    """Extract the structured socket/link groups from a PoB build, per skill set.
+    """Read structured skills and supports from the selected PoB skill set.
 
-    Unlike parse_pob (which summarises only the active set as prose), this returns
-    JSON: every link group with its gems (name, skillId, level, quality, support
-    flag, main-skill flag) and its item `slot` binding when the author set one.
-    Groups WITHOUT a slot are item-agnostic — the link group is the unit, and any
-    gear with the right links/colours can host it. A build can have many skill sets
-    (per act / progression stage); pick one with `skill_set` (id or title
-    substring, e.g. "Early Covenant"), otherwise the active set is returned. The
-    top-level `skill_sets` index always lists every set so you can pick another.
-
-    For slot-bound groups, `item_sockets` gives the item's ACTUAL socket-colour
-    layout (e.g. "G-B-B-B-R-B") read straight from the export — the author's real
-    colours. For unassigned groups (item-agnostic), and to compute the *required*
-    colours, derive each gem's natural colour from its attribute requirements via
-    pob-mcp's get_gem_detail (read at a mid/high level; low levels omit the
-    requirement). Note: item-granted supports (e.g. The Hungry Loop) appear as gems
-    and inflate gem_count even though the item has only one real socket; and abyssal
-    jewels are NOT here (they're items in abyssal sockets, with no R/G/B colour).
-
-    Args:
-        code_or_url: PoB export code, pobb.in / poedb.tw / pastebin URL.
-        skill_set: Optional — a skill-set id or title substring to return groups
-            for. Omit to get the active set.
+    In PoE2, skill support groups are independent from equipment rune sockets.
+    The result lists equipment_sockets separately. skill_set selects an exact
+    ID or an unambiguous title substring; omission selects the active set.
     """
     code = code_or_url.strip()
     if code.startswith("http"):
@@ -776,12 +775,11 @@ def parse_pob_skill_groups(code_or_url: str, skill_set: str = "") -> str:
         target = None
         if skill_set:
             q = skill_set.strip().lower()
-            target = next(
-                (s for s in sets
-                 if s.get("id") == skill_set.strip()
-                 or q in _clean_title(s.get("title", "")).lower()),
-                None,
-            )
+            exact = [s for s in sets if s.get("id") == skill_set.strip()]
+            matches = exact or [s for s in sets if q in _clean_title(s.get("title", "")).lower()]
+            if len(matches) != 1:
+                raise ValueError(f"Unknown or ambiguous skill set {skill_set!r}; select an exact ID")
+            target = matches[0]
         if target is None:
             target = next((s for s in sets if s.get("id") == active_id), sets[0])
         showing, groups = _clean_title(target.get("title", "")), _skill_groups_for_set(target)
@@ -792,11 +790,14 @@ def parse_pob_skill_groups(code_or_url: str, skill_set: str = "") -> str:
     # groups, matched to the stage's item set. Unassigned groups have no item, so no
     # item_sockets — derive their required colours from the gems (via get_gem_detail).
     slot_sockets = _itemset_slot_sockets(root, stage_idx)
-    for g in groups:
-        if g["slot"] and g["slot"] in slot_sockets:
-            g["item_sockets"] = slot_sockets[g["slot"]]
+    if root.tag != "PathOfBuilding2":
+        for g in groups:
+            if g["slot"] and g["slot"] in slot_sockets:
+                g["item_sockets"] = slot_sockets[g["slot"]]
 
     return json.dumps({
+        "game": "poe2" if root.tag == "PathOfBuilding2" else "poe1",
+        "equipment_sockets": slot_sockets,
         "class": build.get("class"),
         "ascendancy": build.get("ascendancy"),
         "level": build.get("level"),

@@ -4,10 +4,11 @@ from urllib.parse import unquote, urlparse
 import httpx
 from bs4 import BeautifulSoup
 
-from poe_data_mcp.sources.common import HEADERS
+from poe_data_mcp.sources.common import HEADERS, GAME
 
 # poewiki's article HTML sits behind an anti-bot challenge; its MediaWiki API does not.
-_WIKI_API = "https://www.poewiki.net/w/api.php"
+_WIKI_HOST = "www.poe2wiki.net" if GAME == "poe2" else "www.poewiki.net"
+_WIKI_API = f"https://{_WIKI_HOST}/w/api.php"
 
 # Identify honestly. The shared HEADERS spoof a browser User-Agent, which is exactly what
 # poewiki's anti-bot layer challenges with proof-of-work — a spoofed browser UA gets a
@@ -94,10 +95,10 @@ def fetch_wiki_page(wiki_url: str) -> str:
     Community Wiki link returned by get_item_detail or get_gem_detail.
 
     Args:
-        wiki_url: Full poewiki.net URL, e.g. "https://www.poewiki.net/wiki/Headhunter"
+        wiki_url: Full article URL on the configured game wiki (poe2wiki.net for PoE2)
     """
-    if "poewiki.net" not in wiki_url:
-        return "This tool only works with poewiki.net URLs."
+    if urlparse(wiki_url).hostname not in {_WIKI_HOST, _WIKI_HOST.removeprefix("www.")}:
+        raise ValueError(f"For {GAME}, use a {_WIKI_HOST} article URL.")
 
     title_hint = _page_title_from_url(wiki_url)
     if not title_hint:

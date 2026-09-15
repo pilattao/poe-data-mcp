@@ -1,3 +1,9 @@
+> **PoE2 port (`poe2-port` branch).** Set `POE_GAME=poe2`, `POB_INSTALL_DIR`
+> and `POE_LEAGUE`. This fork uses local PoB2 definitions and game-specific remote
+> schemas. Python MCP SDK 1.x is required. Full suite restoration remains in progress;
+> legacy-only features and source gaps are explicit. Run `pytest tests` for this
+> package's contracts. See the [suite port documentation](https://github.com/pilattao/poe_mcp_suite/blob/poe2-port/docs/poe2/README.md).
+
 # poe-data-mcp
 
 <!-- mcp-name: io.github.charleslucas/poe-data-mcp -->

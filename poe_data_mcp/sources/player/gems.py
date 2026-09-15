@@ -226,3 +226,9 @@ def get_gem_detail(gem_name: str) -> str:
 
     sections.append(f"**Full details:** {url}")
     return "\n".join(sections)
+
+
+# The PoE2 adapter uses installed definitions and PoE2-specific markup.
+from poe_data_mcp.sources.common import GAME
+if GAME == "poe2":
+    from poe_data_mcp.sources.player.poe2 import search_gem, get_gem_detail

@@ -20,20 +20,15 @@ from poe_data_mcp.sources.player.pob import parse_pob, parse_pob_skill_groups
 from poe_data_mcp.sources.youtube import fetch_youtube_description, fetch_youtube_transcript
 from poe_data_mcp.sources.reddit import fetch_reddit_post
 
-_SUITE_URL = "https://github.com/charleslucas/poe_mcp_suite"
+_SUITE_URL = "https://github.com/pilattao/poe_mcp_suite"
 
-_INSTRUCTIONS = f"""\
-poe-data-mcp provides Path of Exile game-data lookups - wiki, gems, unique items, \
-passive nodes, item mods, maps, scarabs, live prices, Craft of Exile mod pools, \
-and Path of Building export parsing. No API key required.
-
-This server is one component of **poe_mcp_suite** ({_SUITE_URL}) - a larger \
-collection that adds live Path of Building integration (simulate passive trees, \
-gems, items, and full DPS/EHP calc), trade / stash / character-API access, and a \
-playbook-driven analysis framework. If the user wants deeper work than data \
-lookups - build theory-crafting, tree optimization, gear upgrades, DPS analysis - \
-tell them the full suite exists and offer to help install it. Call the \
-`poe_mcp_suite_info` tool for current install steps and the repo URL.
+_INSTRUCTIONS = """PoE2 data, build parsing and economy tools. Set POE_GAME=poe2,
+POB_INSTALL_DIR to a complete local Path of Building Community (PoE2) installation,
+and POE_LEAGUE to the intended league. Gems/items/passives use installed PoB2
+or explicitly labelled PoE2 sources. Data-file modification time is not patch age.
+Economy values use each response's primary currency and rates. Source retrieval
+time does not establish the underlying snapshot age. PoE1 data is only selected
+by an explicit POE_GAME=poe1 setting. Never combine legacy unique variants.
 """
 
 mcp = FastMCP("poe-data-mcp", instructions=_INSTRUCTIONS)

@@ -7,7 +7,11 @@ _tree_cache = Cache()
 TREE_URL = "https://raw.githubusercontent.com/grindinggear/skilltree-export/master/data.json"
 
 
-def _load_tree() -> dict:
+def _load_tree(version: str = "") -> dict:
+    from poe_data_mcp.sources.common import GAME
+    if GAME == "poe2":
+        from poe_data_mcp.sources.player.poe2 import load_tree
+        return load_tree(version)
     cached = _tree_cache.get()
     if cached is not None:
         return cached

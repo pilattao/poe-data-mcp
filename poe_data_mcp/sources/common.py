@@ -1,9 +1,13 @@
 import time
+import os
 
 import httpx
 from bs4 import BeautifulSoup
 
-BASE_URL = "https://poedb.tw/us"
+GAME = os.environ.get("POE_GAME", "poe2").lower()
+if GAME not in {"poe1", "poe2"}:
+    raise ValueError("POE_GAME must be poe1 or poe2")
+BASE_URL = "https://poe2db.tw/us" if GAME == "poe2" else "https://poedb.tw/us"
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
 }

@@ -1,6 +1,8 @@
 import httpx
 
-from poe_data_mcp.sources.common import BASE_URL, Cache, fetch_page
+from poe_data_mcp.sources.common import Cache, fetch_page
+
+BASE_URL = "https://poedb.tw/us"
 
 _scarab_cache = Cache()
 

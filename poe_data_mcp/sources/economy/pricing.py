@@ -402,3 +402,8 @@ async def currency_overview(league: str = "") -> str:
         rows.append(f"{name:<30} {chaos:>12,.1f}")
 
     return "\n".join(rows)
+
+# Game-specific schemas and units must not be shared with PoE1.
+from poe_data_mcp.sources.common import GAME
+if GAME == 'poe2':
+    from poe_data_mcp.sources.economy.poe2 import price_check, currency_overview

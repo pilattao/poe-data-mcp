@@ -17,7 +17,8 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "mcp[cli]",
+    "mcp[cli]>=1.26,<2",
+    "lupa>=2.6,<3",
     "httpx",
     "beautifulsoup4",
     "platformdirs>=3",
